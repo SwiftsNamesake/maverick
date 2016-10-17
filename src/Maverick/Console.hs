@@ -115,7 +115,7 @@ data Font = Font {
 
 -- |
 data Canvas = Canvas {
-  fTexture :: Texture,
+  fTexture :: Texture, -- TODO: Rename (this is the output texture)
   fDirty   :: Bool
 }
 
@@ -152,6 +152,7 @@ data Console  = Console {
 makeLensesWith abbreviatedFields ''Colour
 makeLensesWith abbreviatedFields ''Settings
 makeLensesWith abbreviatedFields ''Cursor
+makeLensesWith abbreviatedFields ''Canvas
 makeLensesWith abbreviatedFields ''Console
 
 
@@ -176,7 +177,7 @@ new config = do
                      fViewport = bounds,
                      fSettings = config }
   where
-    bounds = BoundingBox { cornerOf = V2 0 0, sizeOf = V2 40 120 }
+    bounds = BoundingBox { cornerOf = V2 0 0, sizeOf = V2 120 40 }
 
 
 -- |
