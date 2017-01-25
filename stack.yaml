@@ -40,6 +40,12 @@ packages:
 - '.'
 - location: C:/Users/Jonatan/Desktop/Haskell/modules/Michelangelo
 - location: C:/Users/Jonatan/Desktop/Haskell/modules/Leibniz
+- location:
+    git: https://github.com/SwiftsNamesake/GPipe-GLFW.git
+    commit: 8f888d3c692c3bf7aad7ed05afc98116ef965747
+  subdirs:
+    - GPipe-GLFW
+
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
@@ -48,6 +54,8 @@ extra-deps:
   - hpp-0.3.1.0
   - Cartesian-0.6.0.0
   - Michelangelo-0.2.4.0
+  - GPipe-2.1.8
+  - GPipe-GLFW-1.2.2
 
 # Override default flag values for local packages and extra-deps
 flags: {}

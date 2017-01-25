@@ -46,10 +46,11 @@ import qualified Prelude as P
 
 import GHC.Stack
 
-import Linear (V2(..))
+import Linear (V2(..), V3(..))
 
 import Control.Lens (makeFields, makeLensesWith, abbreviatedFields, Getter, Setter, Lens, (.~), (^.))
 import Control.Applicative ((<$>), (<*>))
+import Control.Monad.Trans.Either
 
 -- import Foreign.Storable.Tuple ()
 -- import Foreign.Ptr as Ptr
@@ -57,6 +58,7 @@ import Control.Applicative ((<$>), (<*>))
 import qualified Data.Text as T
 import           Data.Text (Text)
 import           Data.Word
+import qualified Data.Map as M
 
 import           Data.Colour
 import           Data.Colour.SRGB
@@ -65,10 +67,13 @@ import qualified Data.Vector.Storable as VS
 import           Data.Array.Repa ((:.)(..)) -- Weirdest syntax ever
 import qualified Data.Array.Repa as R
 
-import Graphics.Rendering.OpenGL as GL hiding (projection, perspective, Line, position, ortho, viewport, RGB)
+import qualified Graphics.Text.TrueType as TT
+import           Graphics.Rendering.OpenGL as GL hiding (projection, perspective, Line, position, ortho, viewport, RGB)
 
 -- import Interpolate
 import Cartesian.Core (BoundingBox(..), left, right, top, corner, size, bottom)
+
+import Graphics.Michelangelo.Types (Mesh(..))
 import Graphics.Michelangelo.Texture as Texture
 
 
@@ -212,6 +217,51 @@ newCanvas view bg = do
 -- |
 -- createFontMap :: Font -> IO FontMap
 -- createFontMap = ()
+
+
+-- Fonts ---------------------------------------------------------------------------------------------------------------------------------------------
+
+-- |
+-- fonts :: EitherT String IO [GL.TextureObject]
+-- fonts :: FilePath -> EitherT String IO (M.Map String TT.Font)
+-- fonts root = M.fromList <$> (sequencePairs $ map (load <$>) [("Elixia",    "Elixia.ttf"),
+--                                                              ("rothenbg",  "rothenbg.ttf"), 
+--                                                              ("digital-7", "digital-7 (mono).ttf")])
+--   where
+--     load :: FilePath -> EitherT String IO TT.Font
+--     load = EitherT . TT.loadFontFile . (root </>)
+
+
+-- |
+-- TODO | - Tessellate (on the GPU?)
+--          cf. https://hackage.haskell.org/package/OpenGL-2.1/docs/Graphics-Rendering-OpenGL-GLU-Tessellation.html#t:AnnotatedVertex
+--        - Options
+--        - Metrics
+-- createFontTexture :: Font -> String -> IO FontMap
+-- createFontTexture font charset = _
+--   where
+--     vertices' :: [[V3 Float]]
+--     vertices' = map makeGlyphVertices glyphs
+    
+--     -- I'm assuming each V.Vector holds the coordinates for a connected line strip
+--     -- and that each glyph is represented by a list of such vectors (some glyphs are of course disjoint).
+--     --
+--     -- The docs do not make this point explicitly so I'll just have to test it. 
+--     makeGlyphVertices :: [V.Vector (Float, Float)] -> [V3 Float]
+--     makeGlyphVertices glyph = concatMap stitch glyph
+
+--     -- | I also considered the names 'pairs', 'pairwise' and 'connect'
+--     -- TODO | - Be strict (remind me why foldl is bad?)
+--     --        - Account for empty Vector (?)
+--     stitch :: V.Vector (Float, Float) -> [V3 Float]
+--     stitch = drop 1 . reverse . drop 1 . V.foldl (\xs p -> let v = fromTuple p in v:v:xs) []
+
+--     fromTuple :: Num a => (a, a) -> V3 a
+--     fromTuple (x, y) = V3 x (-y) 0
+
+--     texcoords' = map (\(V3 x y z) -> V2 (x/1) (y/1)) (concat vertices') -- TODO: Do this properly?
+--     colours'   = concat $ zipWith (\c g -> replicate (length g) c) (cycle [V4 0.2 0.2 0.9 1, V4 0.9 0.35 0.42 1.0]) vertices' --
+--     glyphs = TT.getStringCurveAtPoint 508 (0,0) [(font', TT.PointSize 48, s)] -- TODO: Figure out exactly what each argument means
 
 -- Output --------------------------------------------------------------------------------------------------------------------------------------------
 

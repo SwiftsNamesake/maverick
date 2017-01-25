@@ -1,4 +1,6 @@
 
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module Main where
 
 import Text.Printf
@@ -30,16 +32,18 @@ import           Graphics.GLUtil.GLError as GL
 import           Graphics.UI.GLFW (MouseButton(..), MouseButtonState(..))
 import qualified Graphics.UI.GLFW as GLFW
 
--- import Leibniz.Constants (pi)
 
 import           Graphics.Michelangelo.Shapes (planeXY, triangles)
 import qualified Graphics.Michelangelo.Lenses as L
-import           Graphics.Michelangelo.Types (Attribute(..), UniformValue(..), ShaderPaths(..), Matrix44(..))
+import qualified Graphics.Michelangelo.Mesh   as Mesh
+import           Graphics.Michelangelo.Types (Attribute(..), UniformValue(..), ShaderPaths(..), Matrix44(..), Mesh(..))
 import           Graphics.Michelangelo.Shaders as Shader
 
-import Cartesian.Core (size, x, y, z)
+import Leibniz (π)
+import Cartesian.Core (size, x, y, z, BoundingBox(..))
 
 import Maverick.Console as Console
+import qualified Maverick.Console.Render as Render
 
 
 
@@ -80,6 +84,18 @@ maybeToEither err ma = maybe (Left err) (Right) ma
 fromBool :: err -> a -> Bool -> Either err a
 fromBool _   a True  = Right a
 fromBool err _ False = Left err
+
+
+-- | generalisation of 'mod' to any instance of Real
+mod' :: (Real a) => a -> a -> a
+mod' n d = n - (fromInteger f) * d
+  where
+    f = div' n d
+
+
+-- | generalisation of 'div' to any instance of Real
+div' :: (Real a,Integral b) => a -> a -> b
+div' n d = floor ((toRational n) / (toRational d))
 
 --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -170,54 +186,24 @@ render app t = do
   GL.clear [ColorBuffer, DepthBuffer]
   debugGL
   
-  GL.activeTexture  $= (GL.TextureUnit 0) -- 
+  GL.activeTexture  $= (GL.TextureUnit 0)
   GL.textureBinding GL.Texture2D $= Just (app^.consoleOf.canvas.texture) -- Is this needed (?)
   
-  -- TODO: We shouldn't hard-code the wrapping and filtering operations
-  -- GL.texture2DWrap $= (Repeated, ClampToEdge)
-  -- GL.textureFilter Texture2D $= ((Linear', Nothing), Linear')
-  debugGL
-
-  loc1 <- GL.get (GL.uniformLocation (app^.shaderOf) "uMVMatrix")
-  GL.uniform loc1 $= (Matrix44 (identity & translation.z .~ (-2) :: M44 GL.GLfloat))
-  debugGL
-
-  loc2 <- GL.get (GL.uniformLocation (app^.shaderOf) "uPMatrix")
-  GL.uniform loc2 $= (Matrix44 (ortho (-cx/2) (cx/2) (-cy/2) (cy/2) 0 20 :: M44 GL.GLfloat))
-  debugGL
-
-  loc3 <- GL.get (GL.uniformLocation (app^.shaderOf) "uSampler")
-  GL.uniform loc3 $= (0 :: GL.GLint)
-  debugGL
-
-  forM (app^.easelOf._1) $ \attr -> do
-    debugGL
-    GL.vertexAttribArray (attr^.L.location)   $= GL.Enabled
-    GL.bindBuffer GL.ArrayBuffer              $= Just (attr^.L.buffer)                              
-    debugGL
-    GL.vertexAttribPointer (attr^.L.location) $= (GL.ToFloat, GL.VertexArrayDescriptor (fromIntegral $ attr^.L.count) GL.Float 0 GL.offset0)
-
-  -- Shader.bindAttributes (app^.easelOf._1)
-  -- Shader.bindUniforms   (app^.easelOf._2)
-  -- GL.printError
-
-  debugGL
-  GL.drawArrays (GL.Triangles) 0 (6)
-  debugGL
+  Mesh.render (Mesh {
+    fTexture    = Just (app^.consoleOf.canvas.texture),
+    fPrimitive  = GL.Triangles,
+    fAttributes = app^.easelOf._1,
+    fUniforms   = app^.easelOf._2,
+    fShader     = app^.shaderOf,
+    fPrepare    = Nothing,
+    fCentre     = V3 0 0 0,
+    fBounds     = BoundingBox { cornerOf = V3 0 0 0, sizeOf = V3 0 0 0 },
+    fSize       = 6 -- TODO: Don't hard-code this
+  })
   
   GLFW.swapBuffers (app^.windowOf)
 
   debugGL
-
-  where
-    -- | generalisation of 'mod' to any instance of Real
-    mod' :: (Real a) => a -> a -> a
-    mod' n d = n - (fromInteger f) * d where
-        f = div' n d
-
-    -- | generalisation of 'div' to any instance of Real
-    div' :: (Real a,Integral b) => a -> a -> b
-    div' n d = floor ((toRational n) / (toRational d))
 
 
 -- |
@@ -236,14 +222,10 @@ unif program' (name, value) = EitherT $ (ensureLocation) <$> (GL.get . uniformLo
 -- |
 quad :: V2 Double -> Console -> GL.Program -> EitherT String IO Quad
 quad (V2 cx cy) console shader = do
-  lift $ do
-    debugGL
-    GL.currentProgram $= Just shader
-    print $ planeXY (\x y _ -> V2 (x+0.5) (y+0.5)) 1  1
-    print $ planeXY (\x y z -> V3 x y (-0.5)) dx dy
+  lift $ GL.currentProgram $= Just shader
 
-  attrs'    <- sequence [attr shader ("aTexCoord",       concat . triangles $ planeXY (\x y _ -> V2 (x+0.5) (y+0.5))    1  1 :: [V2 Double]),
-                         attr shader ("aVertexPosition", concat . triangles $ planeXY (\x y z -> V3 x y (-0.5)) dx dy :: [V3 Double])]
+  attrs' <- sequence [attr shader ("aTexCoord",       concat . triangles $ planeXY (\x y _ -> V2 (x+0.5) (y+0.5))    1  1 :: [V2 Double]),
+                      attr shader ("aVertexPosition", concat . triangles $ planeXY (\x y z -> V3 x y (-0.5)) dx dy :: [V3 Double])]
 
   lift (debugGL)
 
@@ -258,12 +240,12 @@ quad (V2 cx cy) console shader = do
     (V2 dx dy) = fromIntegral <$> (console^.viewport.size)
     modelview  = (identity & translation .~ (V3 0 0 0))
     projection = ortho
-                   0    -- Left
-                   cx   -- Right
-                   0    -- Bottom
-                   cy   -- Top
-                   0.1  -- Near
-                   10   -- Far
+                   (-cx/2) -- Left
+                   ( cx/2) -- Right
+                   (-cy/2) -- Bottom
+                   ( cy/2) -- Top
+                   0       -- Near
+                   10      -- Far
 
     -- projection = (perspective
     --                (torad 40.0) -- FOV (y direction, in radians)
@@ -279,45 +261,47 @@ createWindow (V2 cx cy) = GLFW.createWindow cx cy "Maverick Console (2016)" Noth
 
 -- |
 main :: IO ()
-main = print <=< runEitherT $ do
-  lift $ putStrLn "Let's see if this works"
-  succeeded "Failed to create window" GLFW.init
-  
-  lift $ do
-    GLFW.defaultWindowHints
-    GLFW.windowHint (GLFW.WindowHint'OpenGLDebugContext True)
-  window' <- EitherT $ maybeToEither "Failed to create window" <$> createWindow (V2 720 480)
-
-  lift $ do
-    GLFW.makeContextCurrent (Just window') -- Not sure why this is needed or what it does
-    prepareGraphics
-    debugGL
-
-  -- shader' <- EitherT (Shader.createProgram Shader.textured)
-  shader <- EitherT (Shader.loadProgram ShaderPaths { fVertex = root ++ "/assets/shaders/shader-textured-vertex.glsl",
-                                                      fPixel  = root ++ "/assets/shaders/shader-textured-pixel.glsl" })
-  lift (debugGL)
-
-  lift $ GL.currentProgram $= Just shader
-  lift (debugGL)
-
-  self  <- lift $ Console.new defaultSettings
-  easel <- quad (V2 720 480) self shader
-  ref   <- lift $ newIORef (window', self, easel, shader)
-
-  lift $ do
-
-    GLFW.setMouseButtonCallback window' $ Just (onmousepress  ref)
-    GLFW.setKeyCallback         window' $ Just (onkeypress    ref)
-    GLFW.setCursorPosCallback   window' $ Just (\win mx my -> onmousemotion ref win (V2 mx my))
-    GLFW.setWindowSizeCallback  window' $ Just (\win cx cy -> onresize      ref win (V2 cx cy))
-    GLFW.setErrorCallback (Just $ \e s -> print e >> putStrLn s)
+main = do
+  Render.main
+  print <=< runEitherT $ do
+    lift $ putStrLn "Let's see if this works"
+    succeeded "Failed to create window" GLFW.init
     
-    mainloop ref
+    lift $ do
+      GLFW.defaultWindowHints
+      GLFW.windowHint (GLFW.WindowHint'OpenGLDebugContext True)
+    window' <- EitherT $ maybeToEither "Failed to create window" <$> createWindow (V2 720 480)
 
-    GLFW.makeContextCurrent (Nothing) -- TODO: Is this necessary (?)
-    GLFW.destroyWindow window'
-    GLFW.terminate
+    lift $ do
+      GLFW.makeContextCurrent (Just window') -- Not sure why this is needed or what it does
+      prepareGraphics
+      debugGL
+
+    -- shader' <- EitherT (Shader.createProgram Shader.textured)
+    shader <- EitherT (Shader.loadProgram ShaderPaths { fVertex = root ++ "/assets/shaders/shader-textured-vertex.glsl",
+                                                        fPixel  = root ++ "/assets/shaders/shader-textured-pixel.glsl" })
+    lift (debugGL)
+
+    lift $ GL.currentProgram $= Just shader
+    lift (debugGL)
+
+    self  <- lift $ Console.new defaultSettings
+    easel <- quad (V2 720 480) self shader
+    ref   <- lift $ newIORef (window', self, easel, shader)
+
+    lift $ do
+
+      GLFW.setMouseButtonCallback window' $ Just (onmousepress  ref)
+      GLFW.setKeyCallback         window' $ Just (onkeypress    ref)
+      GLFW.setCursorPosCallback   window' $ Just (\win mx my -> onmousemotion ref win (V2 mx my))
+      GLFW.setWindowSizeCallback  window' $ Just (\win cx cy -> onresize      ref win (V2 cx cy))
+      GLFW.setErrorCallback (Just $ \e s -> print e >> putStrLn s)
+      
+      mainloop ref
+
+      GLFW.makeContextCurrent (Nothing) -- TODO: Is this necessary (?)
+      GLFW.destroyWindow window'
+      GLFW.terminate
   where
     -- TODO | - Make this not break
     root = "C:/Users/Jonatan/Desktop/Haskell/modules/maverick"
